@@ -6,30 +6,48 @@ import java.io.*;
 import java.util.*;
 
 public class XT3Mon extends Applet implements Runnable {
-	private final static int SLEEPINTV = 5;
+	private final static int SLEEPINTV = 5000;
 
-	private final static int NROWS = 1;
+	private final static int NROWS = 2;
 	private final static int NCABS = 11;
 	private final static int NCAGES = 3;
 	private final static int NMODS = 8;
 	private final static int NNODES = 4;
 
 	/*
-	 * Login node IDs are appended to the end of the file.
+	 * Login node IDs are appended to the end of the filename.
 	 */
 	private final static String _PATH_JOBMAP =
 	    "/usr/users/torque/nids_list_login";
 	private final static String _PATH_PHYSMAP_PRE =
 	    "/opt/tmp-harness/default/ssconfig/sys";
 	private final static String _PATH_PHYSMAP_SUF = "/nodelist";
-	private final static int[] logids = {1, 3, 4, 5};
+	private final static int[] logids = { 0, 1, 4, 5, 6, 7 };
+
+	private State[] states = new State[] {
+		new State("Free", Color.white),			/* ST_FREE */
+		new State("Down", Color.red),			/* ST_DOWN */
+		new State("Disabled", Color.gray),		/* ST_DISABLED */
+		new State("Used", null),				/* ST_USED */
+		new State("I/O", Color.yellow),			/* ST_IO */
+		new State("Unaccounted", Color.blue)	/* ST_UNACC */
+	};
+
+	public final static int ST_FREE = 0;
+	public final static int ST_DOWN = 1;
+	public final static int ST_DISABLED = 2;
+	public final static int ST_USED = 3;
+	public final static int ST_IO = 4;
+	public final static int ST_UNACC = 5;
 
 	private long lastrun;
 	private Thread t;
 	private int width;
 	private int height;
 	private Node[][][][][] nodes = new Node[NROWS][NCABS][NCAGES][NMODS][NNODES];
+	private ArrayList[] invmap = new ArrayList[this.logids.length];
 	private LinkedList jobs;
+	private int njobs;
 
 	public void start() {
 		this.t = new Thread(this);
@@ -46,7 +64,7 @@ public class XT3Mon extends Applet implements Runnable {
 			try {
 				Thread.currentThread().sleep(SLEEPINTV);
 			} catch (Exception e) {
-				System.out.println(e.toString());
+				System.err.println(e.toString());
 			}
 			repaint();
 		}
@@ -61,7 +79,8 @@ public class XT3Mon extends Applet implements Runnable {
 	 *	'C' cab# '-' row# 'c' cage# 's' slot#	node#
 	 */
 	public int[] parse_coord(String coord, String cpu) {
-		int[] pos = new int[5];
+		int[] pos = { NCABS, NROWS, NCAGES, NMODS, NNODES };
+		int val;
 
 		int p = 0, j;
 		for (int i = 0; i < coord.length(); i++) {
@@ -70,17 +89,20 @@ public class XT3Mon extends Applet implements Runnable {
 				/* -1 because cpu# is not in `coord'. */
 				if (p >= pos.length - 1)
 					return (null);
-				j = 0;
-				while (Character.isDigit(coord.charAt(++j + i)))
+				j = i;
+				while (++j < coord.length() &&
+				  Character.isDigit(coord.charAt(j)))
 					;
-				j--;
-				pos[p] = (int)Integer.getInteger(
-				    coord.substring(i, j)).intValue();
-				i += j - 1;
+				val = Integer.parseInt(coord.substring(i, j));
+				if (val >= pos[p])
+					return (null);
+				pos[p++] = val;
+				i = j - 1;
 			} else {
 				switch (c) {
 				case 'C': case 'c':
-				case 's':
+				case 'S': case 's':
+				case '-':
 					break;
 				default:
 					return (null);
@@ -89,7 +111,8 @@ public class XT3Mon extends Applet implements Runnable {
 		}
 		if (p != pos.length - 1)
 			return (null);
-		pos[p] = (int)Integer.getInteger(cpu).intValue();
+		if ((pos[p] = Integer.parseInt(cpu)) >= NNODES)
+			return (null);
 		/*
 		 * Parsed order is (1), but we want (2):
 		 *	(1) cb r cg m n
@@ -109,12 +132,12 @@ public class XT3Mon extends Applet implements Runnable {
 	 *	========================
 	 *	c1-0c0s0	0	0	i
 	 */
-	public void parse_physmap()
+	public void load_physmap()
 	  throws FileNotFoundException, IOException {
 		int[] c;
 		for (int i = 0; i < logids.length; i++) {
-			BufferedReader r = new BufferedReader(new
-			    FileReader(_PATH_PHYSMAP_PRE + i + _PATH_PHYSMAP_SUF));
+			String fn = _PATH_PHYSMAP_PRE + logids[i] + _PATH_PHYSMAP_SUF;
+			BufferedReader r = new BufferedReader(new FileReader(fn));
 			String l;
 			int lineno = 0;
 			while ((l = r.readLine()) != null) {
@@ -124,26 +147,30 @@ public class XT3Mon extends Applet implements Runnable {
 				String[] s = l.split(" ");
 				if (s.length != 4 ||
 				    (c = this.parse_coord(s[0], s[1])) == null) {
-					System.err.println("Warning: malformed line " +
-					  "(" + _PATH_PHYSMAP_PRE + i + _PATH_PHYSMAP_SUF +
-					  ":" + lineno + "): " + l);
+					System.err.println("[physmap] malformed line " +
+					  "(" + fn + ":" + lineno + "): " + l);
 					continue;
 				}
 				/*         r     cb    cg    m     n */
 				Node n = this.nodes[c[0]][c[1]][c[2]][c[3]][c[4]];
-				n.nid = (int)Integer.getInteger(s[2]).intValue();
+				n.nid = Integer.parseInt(s[2]);
+				n.logid = i;
 				switch (s[3].charAt(0)) {
 				case 'n':
-					n.state = Node.ST_DISABLED;
+					n.state = ST_DISABLED;
 					break;
 				case 'i':
-					n.state = Node.ST_IO;
+					n.state = ST_IO;
 					break;
 				case 'c':
 					/* A white lie, but good enough. */
-					n.state = Node.ST_FREE;
+					n.state = ST_FREE;
 					break;
 				}
+				this.invmap[i].ensureCapacity(n.nid + 1);
+				for (int k = this.invmap[i].size(); k <= n.nid; k++)
+					this.invmap[i].add(null);
+				this.invmap[i].set(n.nid, n);
 			}
 			r.close();
 		}
@@ -152,20 +179,22 @@ public class XT3Mon extends Applet implements Runnable {
 	public void init() {
 		this.lastrun = 0;
 		this.jobs = new LinkedList();
+		for (int i = 0; i < this.logids.length; i++)
+			this.invmap[i] = new ArrayList(50);
 		for (int r = 0; r < NROWS; r++)
 			for (int cb = 0; cb < NCABS; cb++)
 				for (int cg = 0; cg < NCAGES; cg++)
 					for (int m = 0; m < NMODS; m++)
 						for (int n = 0; n < NNODES; n++)
-							this.nodes[r][cb][cg][m][n] = new Node(-1);
+							this.nodes[r][cb][cg][m][n] = new Node(-1, -1);
 		try {
-			this.parse_physmap();
+			this.load_physmap();
 		} catch (Exception e) {
-			System.err.println("Cannot open physical map");
+			System.err.println("cannot open physical map: " + e);
 			System.exit(1);
 		}
-		this.width = 500;
-		this.height = 500;
+		this.width = Integer.parseInt(this.getParameter("width"));
+		this.height = Integer.parseInt(this.getParameter("height"));
 		this.resize(this.width, this.height);
 	}
 
@@ -174,11 +203,11 @@ public class XT3Mon extends Applet implements Runnable {
 		if (this.lastrun + SLEEPINTV >= now.getTime())
 			return;
 		try {
-			this.fetch();
+			this.load_jobmap();
 			this.lastrun = now.getTime();
 			this.paint(g);
 		} catch (Exception e) {
-			System.out.println(e.toString());
+			System.err.println(e.toString());
 		}
 	}
 
@@ -196,115 +225,194 @@ public class XT3Mon extends Applet implements Runnable {
 		return (pos);
 	}
 
-	public void fetch() throws Exception {
+	/*
+	 * Format:
+	 *      nid status      jobid
+	 *      ================
+	 *      1       1               0
+	 *
+	 * `status' is 0 or 1 for disabled or enabled.
+	 * `jobid' is 0 if unassigned.
+	 */
+	public void load_jobmap()
+	  throws Exception {
+		LinkedList newj = new LinkedList();
+		Job j;
+		Node n;
+		int nid, jobid, index = 0;
+
 		for (int i = 0; i < logids.length; i++) {
-			BufferedReader r = new BufferedReader(new
-			   FileReader(_PATH_JOBMAP + i));
+			String fn = _PATH_JOBMAP + this.logids[i];
+			BufferedReader r = new BufferedReader(new FileReader(fn));
 			String l;
+			int lineno = 0;
 			while ((l = r.readLine()) != null) {
+				lineno++;
+				if (l.charAt(0) == '#')
+					continue;
 				String[] s = l.split(" ");
+				if (s.length != 3) {
+					System.err.println("[jobmap] malformed line " +
+					  "(" + fn + ":" + lineno + "): " + l);
+					continue;
+				}
+				nid = Integer.parseInt(s[0]);
+				if (nid >= this.invmap[i].size() ||
+				  (n = (Node)this.invmap[i].get(nid)) == null)
+					throw new Exception("Inconsistency between phys/job " +
+					  "maps for nid " + nid);
+				jobid = Integer.parseInt(s[2]);
+
+				if (s[1].equals("0"))		/* disabled field */
+					n.state = ST_DOWN;
+				else if (jobid == 0)
+					n.state = ST_FREE;
+				else {
+					n.state = ST_USED;
+					j = null;
+					boolean found = false;
+					for (Iterator it = newj.iterator(); it.hasNext() &&
+					  (j = (Job)it.next()) != null; )
+						if (j.id == jobid && j.logid == i) {
+							found = true;
+							break;
+						}
+					if (!found) {
+						j = new Job(jobid, i, ++index);
+						newj.addFirst(j);
+					}
+					n.job = j;
+				}
 			}
 			r.close();
 		}
+		this.jobs = newj;
+		this.njobs = index;
 	}
 
 	public synchronized void paint(Graphics g) {
 		Node node;
 
-		g.setColor(Color.white);
+		g.setColor(new Color(0xcc, 0xcc, 0xcc));
 		g.fillRect(0, 0, this.width, this.height);
-		if (this.jobs.size() == 0)
-			return;
+
 		int x = 0, y = 0;
 		int r, cb, cg, m, n, j;
 
-		int rowheight = this.height / NROWS;
-		int cgheight = rowheight / NCAGES;
-		int cbwidth = this.width / NCABS;
+		int legendheight = 50;
+
+		int rowspace = 10;
+		int rowheight = (this.height - legendheight - 1 -
+		    (NROWS - 1) * rowspace) / NROWS;
+		int cgspace = 3;
+		int cgheight = (rowheight - (NCAGES - 1) * cgspace) / NCAGES;
+		int cbspace = 3;
+		int cbwidth = (this.width - 1 - (NCABS - 1) * cbspace) / NCABS;
 		int modwidth = cbwidth / NMODS;
 		int nodeheight = cgheight / NNODES;
 		int nodewidth = modwidth;
 
-		for (r = 0; r < NROWS; r++, y += rowheight) {
-			for (cb = 0; cb < NCABS; cb++, x += cbwidth) {
-				for (cg = 0; cg < NCAGES; cg++, y += cgheight) {
+		for (r = 0; r < NROWS; r++, y += rowheight + rowspace) {
+			for (cb = 0; cb < NCABS; cb++, x += cbwidth + cbspace) {
+				for (cg = 0; cg < NCAGES; cg++, y += cgheight + cgspace) {
 					for (m = 0; m < NMODS; m++, x += modwidth) {
 						for (n = 0; n < NNODES; n++, y += nodeheight) {
 							node = this.nodes[r][cb][cg][m][n];
 							Color c = null;
-							switch (node.state) {
-							case Node.ST_FREE:
-								c = Color.white;
-								break;
-							case Node.ST_USED:
-								c = getColor(node.job_id);
-								break;
-							case Node.ST_DOWN:
-								c = Color.red;
-								break;
-							case Node.ST_UNACC:
-								c = Color.black;
-								break;
-							case Node.ST_IO:
-								c = Color.yellow;
-								break;
-							case Node.ST_DISABLED:
-								c = Color.gray;
-								break;
-							}
+							if (node.state == ST_USED)
+								c = getColor(node.job.index);
+							else
+								c = this.states[node.state].color;
 							g.setColor(c);
 							g.fillRect(x, y, nodewidth, nodeheight);
+							g.setColor(Color.black);
+							g.drawRect(x, y, nodewidth, nodeheight);
 						}
 						y -= nodeheight * NNODES;
 					}
 					x -= modwidth * NMODS;
 				}
-				y -= cgheight * NCAGES;
+				y -= (cgheight + cgspace) * NCAGES;
 			}
-			x -= cbwidth * NCABS;
+			x -= (cbwidth + cbspace) * NCABS;
+		}
+
+		y = this.height - legendheight + 10;
+		g.setColor(Color.black);
+		g.drawRect(0, y, this.width - 1, this.height - y - 1);
+
+		int nst = this.states.length - 1;					/* Ignore ST_USED. */
+		int stspace = this.width / nst * 3 / 4;
+		int stheight = 20;
+		int stwidth = (this.width - 3 - nst * stspace) / nst;
+
+		int txheight = g.getFontMetrics().getHeight();
+
+		g.drawString("Legend", this.width / 2 -
+		    g.getFontMetrics().stringWidth("Legend") / 2, y + txheight - 3);
+
+		x = 3;
+		y += txheight;
+		for (int k = 0; k < this.states.length; k++, x += stwidth + stspace) {
+			if (k == ST_USED) {
+				x -= stwidth + stspace;
+				continue;
+			}
+			g.setColor(this.states[k].color);
+			g.fillRect(x, y, stwidth, stheight);
+			g.setColor(Color.black);
+			g.drawRect(x, y, stwidth, stheight);
+			g.drawString(this.states[k].label, x + stwidth + 4, y + txheight);
 		}
 	}
 
 	public Color getColor(int j) {
-		int n = this.jobs.size();
+		int n = this.njobs;
 		int r, g, b;
-		double bres, div = j / n;
+		double div = j / n;
 
-		r = (int)Math.cos(div);
-		g = (int)(Math.sin(div) * Math.sin(div));
-		bres = Math.tan(div == 0.0 ? 0.1 : div);
-		if (bres != 0.0)
-			bres = 1 / bres;
-		b = (int)bres;
+		r = (int)(Math.cos(div) * 255);
+		g = (int)(Math.sin(div) * Math.sin(div)) * 255;
+		b = (int)(Math.abs(Math.tan(div)) * 255);
+
+System.out.println("want color for job " + j + ", got (" + r + "," + g + "," + b + ")");
+
 		return (new Color(r, g, b));
 	}
 };
 
 class Job {
 	public int id;
-	public LinkedList nodes;
+	public int logid;
+	public int index;
 
-	public Job(int id, LinkedList nodes) {
+	public Job(int id, int logid, int index) {
 		this.id = id;
-		this.nodes = nodes;
+		this.logid = logid;
+		this.index = index;
+	}
+};
+
+class State {
+	public Color color;
+	public String label;
+
+	public State(String l, Color c) {
+		this.color = c;
+		this.label = l;
 	}
 };
 
 class Node {
-	public final static int ST_FREE = 1;
-	public final static int ST_DOWN = 2;
-	public final static int ST_DISABLED = 3;
-	public final static int ST_USED = 4;
-	public final static int ST_IO = 5;
-	public final static int ST_UNACC = 6;
-
 	public int nid;
-	public int job_id;
+	public int logid;
+	public Job job;
 	public int state;
 
-	public Node(int id) {
+	public Node(int id, int logid) {
 		this.nid = id;
-		this.state = ST_UNACC;
+		this.logid = logid;
+		this.state = XT3Mon.ST_UNACC;
 	}
 };
 
