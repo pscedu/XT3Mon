@@ -407,7 +407,7 @@ public class XT3Mon extends Applet implements Runnable {
 
 		for (r = 0; r < NROWS; r++, y += rowheight + rowspace) {
 			for (cb = 0; cb < NCABS; cb++, x += cbwidth + cbspace) {
-				for (cg = 0; cg < NCAGES; cg++, y += cgheight + cgspace) {
+				for (cg = NCAGES - 1; cg >= 0; cg--, y += cgheight + cgspace) {
 					for (m = 0; m < NMODS; m++, x += modwidth) {
 						for (n = 0; n < NNODES; n++, y += nodeheight) {
 							node = this.nodes[r][cb][cg][m][n];
