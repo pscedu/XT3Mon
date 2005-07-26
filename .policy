@@ -1,12 +1,8 @@
 /* $Id$ */
 
 grant codeBase "file:/usr/users/5/yanovich/code/proj/XT3Mon" {
-	permission java.io.FilePermission "/usr/users/torque/nids_list_login0", "read";
-	permission java.io.FilePermission "/usr/users/torque/nids_list_login8", "read";
-	permission java.io.FilePermission "/usr/users/torque/bad_nids_list_login0", "read";
-	permission java.io.FilePermission "/usr/users/torque/bad_nids_list_login8", "read";
-	permission java.io.FilePermission "/usr/users/torque/check_nids_list_login0", "read";
-	permission java.io.FilePermission "/usr/users/torque/check_nids_list_login8", "read";
-	permission java.io.FilePermission "/opt/tmp-harness/default/ssconfig/sys0/nodelist", "read";
-	permission java.io.FilePermission "/opt/tmp-harness/default/ssconfig/sys8/nodelist", "read";
+	permission java.io.FilePermission "/home/torque/nids_list_login", "read";
+	permission java.io.FilePermission "/home/torque/bad_nids_list_login", "read";
+	permission java.io.FilePermission "/home/torque/check_nids_list_login", "read";
+	permission java.io.FilePermission "/home/torque/ssconfig_phantom", "read";
 };
