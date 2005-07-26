@@ -14,3 +14,6 @@ all: ${APP}
 
 clean:
 	rm -rf ${APP}
+
+run:
+	appletviewer XT3Mon.html
