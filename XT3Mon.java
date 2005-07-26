@@ -19,7 +19,7 @@ public class XT3Mon extends Applet implements Runnable {
 	 */
 	private final static String _PATH_JOBMAP = "/home/torque/nids_list_phantom";
 	private final static String _PATH_BADMAP = "/home/torque/bad_nids_list_login";
-	private final static String _PATH_CHECKMAP = "/usr/users/torque/check_nids_list_login";
+	private final static String _PATH_CHECKMAP = "/home/torque/check_nids_list_login";
 	private final static String _PATH_PHYSMAP = "/home/torque/ssconfig_phantom";
 
 	private State[] states = new State[] {
