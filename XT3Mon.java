@@ -17,12 +17,10 @@ public class XT3Mon extends Applet implements Runnable {
 	/*
 	 * Login node IDs are appended to the end of the filename.
 	 */
-	private final static String _PATH_JOBMAP = "/usr/users/torque/nids_list_login";
-	private final static String _PATH_BADMAP = "/usr/users/torque/bad_nids_list_login";
+	private final static String _PATH_JOBMAP = "/home/torque/nids_list_phantom";
+	private final static String _PATH_BADMAP = "/home/torque/bad_nids_list_login";
 	private final static String _PATH_CHECKMAP = "/usr/users/torque/check_nids_list_login";
-	private final static String _PATH_PHYSMAP_PRE = "/opt/tmp-harness/default/ssconfig/sys";
-	private final static String _PATH_PHYSMAP_SUF = "/nodelist";
-	private final static int[] logids = { 0, 8 };
+	private final static String _PATH_PHYSMAP = "/home/torque/ssconfig_phantom";
 
 	private State[] states = new State[] {
 		new State("Free", Color.white),			/* ST_FREE */
@@ -49,7 +47,7 @@ public class XT3Mon extends Applet implements Runnable {
 	private int width;
 	private int height;
 	private Node[][][][][] nodes = new Node[NROWS][NCABS][NCAGES][NMODS][NNODES];
-	private ArrayList[] invmap = new ArrayList[this.logids.length];
+	private ArrayList invmap;
 	private LinkedList jobs;
 	private int njobs;
 	private Color[] ccache;
@@ -139,65 +137,61 @@ public class XT3Mon extends Applet implements Runnable {
 	 */
 	public void load_physmap() {
 		int[] c;
-		for (int i = 0; i < logids.length; i++) {
-			String fn = _PATH_PHYSMAP_PRE + logids[i] + _PATH_PHYSMAP_SUF;
-			try {
-				BufferedReader r = new BufferedReader(new FileReader(fn));
-				String l;
-				int lineno = 0;
-				while ((l = r.readLine()) != null) {
-					lineno++;
-					if (l.charAt(0) == '#')
-						continue;
-					String[] s = l.split(" ");
-					if (s.length != 4 ||
-					    (c = this.parse_coord(s[0], s[1])) == null) {
-						System.err.println("[physmap] malformed line " +
-						  "(" + fn + ":" + lineno + "): " + l);
-						continue;
-					}
-					/*         r     cb    cg    m     n */
-					Node n = this.nodes[c[0]][c[1]][c[2]][c[3]][c[4]];
-					n.nid = Integer.parseInt(s[2]);
-					n.logid = i;
-					switch (s[3].charAt(0)) {
-					case 'n':
-						n.state = ST_DISABLED;
-						break;
-					case 'i':
-						n.state = ST_IO;
-						break;
-					case 'c':
-						/* A white lie, but good enough. */
-						n.state = ST_FREE;
-						break;
-					}
-					this.invmap[i].ensureCapacity(n.nid + 1);
-					for (int k = this.invmap[i].size(); k <= n.nid; k++)
-						this.invmap[i].add(null);
-					this.invmap[i].set(n.nid, n);
+		String fn = _PATH_PHYSMAP;
+		try {
+			BufferedReader r = new BufferedReader(new FileReader(fn));
+			String l;
+			int lineno = 0;
+			while ((l = r.readLine()) != null) {
+				lineno++;
+				if (l.charAt(0) == '#')
+					continue;
+				String[] s = l.split(" ");
+				if (s.length != 4 ||
+				    (c = this.parse_coord(s[0], s[1])) == null) {
+					System.err.println("[physmap] malformed line " +
+					  "(" + fn + ":" + lineno + "): " + l);
+					continue;
 				}
-				r.close();
-			} catch (FileNotFoundException e) {
-				System.err.println("[physmap] " + e);
-			} catch (IOException e) {
-				/* This shouldn't happen... */
-				System.err.println("[physmap] " + e);
+				/*         r     cb    cg    m     n */
+				Node n = this.nodes[c[0]][c[1]][c[2]][c[3]][c[4]];
+				n.nid = Integer.parseInt(s[2]);
+				switch (s[3].charAt(0)) {
+				case 'n':
+					n.state = ST_DISABLED;
+					break;
+				case 'i':
+					n.state = ST_IO;
+					break;
+				case 'c':
+					/* A white lie, but good enough. */
+					n.state = ST_FREE;
+					break;
+				}
+				this.invmap.ensureCapacity(n.nid + 1);
+				for (int k = this.invmap.size(); k <= n.nid; k++)
+					this.invmap.add(null);
+				this.invmap.set(n.nid, n);
 			}
+			r.close();
+		} catch (FileNotFoundException e) {
+			System.err.println("[physmap] " + e);
+		} catch (IOException e) {
+			/* This shouldn't happen... */
+			System.err.println("[physmap] " + e);
 		}
 	}
 
 	public void init() {
 		this.lastrun = 0;
 		this.jobs = new LinkedList();
-		for (int i = 0; i < this.logids.length; i++)
-			this.invmap[i] = new ArrayList(50);
+		this.invmap = new ArrayList(50);
 		for (int r = 0; r < NROWS; r++)
 			for (int cb = 0; cb < NCABS; cb++)
 				for (int cg = 0; cg < NCAGES; cg++)
 					for (int m = 0; m < NMODS; m++)
 						for (int n = 0; n < NNODES; n++)
-							this.nodes[r][cb][cg][m][n] = new Node(-1, -1);
+							this.nodes[r][cb][cg][m][n] = new Node(-1);
 		try {
 			this.load_physmap();
 		} catch (Exception e) {
@@ -251,130 +245,128 @@ public class XT3Mon extends Applet implements Runnable {
 		Job j;
 		Node n;
 
-		for (int i = 0; i < logids.length; i++) {
-			try {
-				String fn = _PATH_JOBMAP + this.logids[i];
-				BufferedReader r = new BufferedReader(new FileReader(fn));
-				String l;
-				int lineno = 0;
-				while ((l = r.readLine()) != null) {
-					lineno++;
-					if (l.charAt(0) == '#')
-						continue;
-					String[] s = l.split(" ");
-					if (s.length < 3) {
-						System.err.println("[jobmap] malformed line " +
-						  "(" + fn + ":" + lineno + "): " + l);
-						continue;
-					}
-					nid = Integer.parseInt(s[0]);
-					enabled = Integer.parseInt(s[1]);
-					if (nid >= this.invmap[i].size() ||
-					  (n = (Node)this.invmap[i].get(nid)) == null) {
-						if (enabled == 0)
-							continue;
-						else
-							throw new IOException("[jobmap " + fn + "] " +
-							  "inconsistency: nid " + nid +
-							  " should be disabled");
-					}
-					jobid = Integer.parseInt(s[2]);
-
+		try {
+			String fn = _PATH_JOBMAP;
+			BufferedReader r = new BufferedReader(new FileReader(fn));
+			String l;
+			int lineno = 0;
+			while ((l = r.readLine()) != null) {
+				lineno++;
+				if (l.charAt(0) == '#')
+					continue;
+				String[] s = l.split(" ");
+				if (s.length < 3) {
+					System.err.println("[jobmap] malformed line " +
+					  "(" + fn + ":" + lineno + "): " + l);
+					continue;
+				}
+				nid = Integer.parseInt(s[0]);
+				enabled = Integer.parseInt(s[1]);
+				if (nid >= this.invmap.size() ||
+				  (n = (Node)this.invmap.get(nid)) == null) {
 					if (enabled == 0)
-						n.state = ST_DOWN;
-					else if (jobid == 0)
-						n.state = ST_FREE;
-					else {
-						n.state = ST_USED;
-						j = null;
-						boolean found = false;
-						for (Iterator it = newj.iterator();
-						  it.hasNext() && (j = (Job)it.next()) != null; )
-							if (j.id == jobid && j.logid == i) {
-								found = true;
-								break;
-							}
-						if (!found) {
-							j = new Job(jobid, i, ++index);
-							newj.addFirst(j);
+						continue;
+					else
+						throw new IOException("[jobmap " + fn + "] " +
+						  "inconsistency: nid " + nid +
+						  " should be disabled");
+				}
+				jobid = Integer.parseInt(s[2]);
+
+				if (enabled == 0)
+					n.state = ST_DOWN;
+				else if (jobid == 0)
+					n.state = ST_FREE;
+				else {
+					n.state = ST_USED;
+					j = null;
+					boolean found = false;
+					for (Iterator it = newj.iterator();
+					  it.hasNext() && (j = (Job)it.next()) != null; )
+						if (j.id == jobid) {
+							found = true;
+							break;
 						}
-						n.job = j;
+					if (!found) {
+						j = new Job(jobid, ++index);
+						newj.addFirst(j);
 					}
+					n.job = j;
 				}
-				r.close();
+			}
+			r.close();
 
-			} catch (FileNotFoundException e) {
-				System.err.println("[jobmap] " + e);
-			} catch (IOException e) {
-				System.err.println("[jobmap] " + e);
-			}
+		} catch (FileNotFoundException e) {
+			System.err.println("[jobmap] " + e);
+		} catch (IOException e) {
+			System.err.println("[jobmap] " + e);
+		}
 
-			try {
-				String fn = _PATH_BADMAP + this.logids[i];
-				BufferedReader r = new BufferedReader(new FileReader(fn));
-				String l;
-				int lineno = 0;
-				while ((l = r.readLine()) != null) {
-					lineno++;
-					if (l.charAt(0) == '#')
-						continue;
-					String[] s = l.split(" ");
-					if (s.length != 2) {
-						System.err.println("[badmap] malformed line " +
-						  "(" + fn + ":" + lineno + "): " + l);
-						continue;
-					}
-					nid = Integer.parseInt(s[0]);
-					enabled = Integer.parseInt(s[1]);
-					if (nid >= this.invmap[i].size() ||
-					  (n = (Node)this.invmap[i].get(nid)) == null) {
-						if (enabled == 0)
-							continue;
-						else
-							throw new IOException("[badmap " + fn + "] " +
-							  "inconsistency: nid " + nid + " should be zero");
-					}
-					if (Integer.parseInt(s[1]) != 0)
-						n.state = ST_BAD;
+		try {
+			String fn = _PATH_BADMAP;
+			BufferedReader r = new BufferedReader(new FileReader(fn));
+			String l;
+			int lineno = 0;
+			while ((l = r.readLine()) != null) {
+				lineno++;
+				if (l.charAt(0) == '#')
+					continue;
+				String[] s = l.split(" ");
+				if (s.length != 2) {
+					System.err.println("[badmap] malformed line " +
+					  "(" + fn + ":" + lineno + "): " + l);
+					continue;
 				}
-			} catch (FileNotFoundException e) {
-			} catch (IOException e) {
-				System.err.println("[badmap] " + e);
-			}
-			
-			try {
-				String fn = _PATH_CHECKMAP + this.logids[i];
-				BufferedReader r = new BufferedReader(new FileReader(fn));
-				String l;
-				int lineno = 0;
-				while ((l = r.readLine()) != null) {
-					lineno++;
-					if (l.charAt(0) == '#')
+				nid = Integer.parseInt(s[0]);
+				enabled = Integer.parseInt(s[1]);
+				if (nid >= this.invmap.size() ||
+				  (n = (Node)this.invmap.get(nid)) == null) {
+					if (enabled == 0)
 						continue;
-					String[] s = l.split(" ");
-					if (s.length != 2) {
-						System.err.println("[checkmap] malformed line " +
-						  "(" + fn + ":" + lineno + "): " + l);
-						continue;
-					}
-					nid = Integer.parseInt(s[0]);
-					enabled = Integer.parseInt(s[1]);
-					if (nid >= this.invmap[i].size() ||
-					  (n = (Node)this.invmap[i].get(nid)) == null) {
-						if (enabled == 0)
-							continue;
-						else
-							throw new IOException("[checkmap " + fn + "] " +
-							  "inconsistency: nid " + nid + " should be zero");
-					}
-					if (Integer.parseInt(s[1]) != 0)
-						n.state = ST_CHECK;
-					
+					else
+						throw new IOException("[badmap " + fn + "] " +
+						  "inconsistency: nid " + nid + " should be zero");
 				}
-			} catch (FileNotFoundException e) {
-			} catch (IOException e) {
-				System.err.println("[checkmap] " + e);
+				if (Integer.parseInt(s[1]) != 0)
+					n.state = ST_BAD;
 			}
+		} catch (FileNotFoundException e) {
+		} catch (IOException e) {
+			System.err.println("[badmap] " + e);
+		}
+		
+		try {
+			String fn = _PATH_CHECKMAP;
+			BufferedReader r = new BufferedReader(new FileReader(fn));
+			String l;
+			int lineno = 0;
+			while ((l = r.readLine()) != null) {
+				lineno++;
+				if (l.charAt(0) == '#')
+					continue;
+				String[] s = l.split(" ");
+				if (s.length != 2) {
+					System.err.println("[checkmap] malformed line " +
+					  "(" + fn + ":" + lineno + "): " + l);
+					continue;
+				}
+				nid = Integer.parseInt(s[0]);
+				enabled = Integer.parseInt(s[1]);
+				if (nid >= this.invmap.size() ||
+				  (n = (Node)this.invmap.get(nid)) == null) {
+					if (enabled == 0)
+						continue;
+					else
+						throw new IOException("[checkmap " + fn + "] " +
+						  "inconsistency: nid " + nid + " should be zero");
+				}
+				if (Integer.parseInt(s[1]) != 0)
+					n.state = ST_CHECK;
+				
+			}
+		} catch (FileNotFoundException e) {
+		} catch (IOException e) {
+			System.err.println("[checkmap] " + e);
 		}
 		this.jobs = newj;
 		this.njobs = index;
@@ -493,12 +485,10 @@ public class XT3Mon extends Applet implements Runnable {
 
 class Job {
 	public int id;
-	public int logid;
 	public int index;
 
-	public Job(int id, int logid, int index) {
+	public Job(int id, int index) {
 		this.id = id;
-		this.logid = logid;
 		this.index = index;
 	}
 };
@@ -515,13 +505,11 @@ class State {
 
 class Node {
 	public int nid;
-	public int logid;
 	public Job job;
 	public int state;
 
-	public Node(int id, int logid) {
+	public Node(int id) {
 		this.nid = id;
-		this.logid = logid;
 		this.state = XT3Mon.ST_UNACC;
 	}
 };
