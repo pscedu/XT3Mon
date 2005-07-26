@@ -75,22 +75,21 @@ public class XT3Mon extends Applet implements Runnable {
 
 	/*
 	 * Coordinate format:
-	 *	coord					cpu
+	 *	coord
 	 *	============================================
-	 *	c0-0c0s0				0
+	 *	c0-0c0s0n0
 	 *
-	 *	'C' cab# '-' row# 'c' cage# 's' slot#	node#
+	 *	'C' cab# '-' row# 'c' cage# 's' slot# 'n' node#
 	 */
-	public int[] parse_coord(String coord, String cpu) {
-		int[] pos = { NCABS, NROWS, NCAGES, NMODS, NNODES };
+	public int[] parse_coord(String coord) {
+		int[] pos = { NROWS, NCABS, NCAGES, NMODS, NNODES };
 		int val;
 
 		int p = 0, j;
 		for (int i = 0; i < coord.length(); i++) {
 			char c = coord.charAt(i);
 			if (Character.isDigit(c)) {
-				/* -1 because cpu# is not in `coord'. */
-				if (p >= pos.length - 1)
+				if (p >= pos.length)
 					return (null);
 				j = i;
 				while (++j < coord.length() &&
@@ -105,35 +104,24 @@ public class XT3Mon extends Applet implements Runnable {
 				switch (c) {
 				case 'C': case 'c':
 				case 'S': case 's':
-				case '-':
+				case 'n': case '-':
 					break;
 				default:
 					return (null);
 				}
 			}
 		}
-		if (p != pos.length - 1)
+		if (p != pos.length)
 			return (null);
-		if ((pos[p] = Integer.parseInt(cpu)) >= NNODES)
-			return (null);
-		/*
-		 * Parsed order is (1), but we want (2):
-		 *	(1) cb r cg m n
-		 *	(2) r cb cg m n
-		 * So swap first two elements;
-		 */
-		p = pos[0];
-		pos[0] = pos[1];
-		pos[1] = p;
 		return (pos);
 	}
 
 	/*
 	 * Format is:
-	 *	0			1	2	3
-	 *  coord		cpu	nid	type
-	 *	========================
-	 *	c1-0c0s0	0	0	i
+	 *	0	1		2
+	 * 	nid	coord		x,y,z
+	 *	=============================
+	 *	2783	c1-10c0s0n1
 	 */
 	public void load_physmap() {
 		int[] c;
@@ -147,15 +135,16 @@ public class XT3Mon extends Applet implements Runnable {
 				if (l.charAt(0) == '#')
 					continue;
 				String[] s = l.split(" ");
-				if (s.length != 4 ||
-				    (c = this.parse_coord(s[0], s[1])) == null) {
+				if (s.length != 3 ||
+				    (c = this.parse_coord(s[1])) == null) {
 					System.err.println("[physmap] malformed line " +
 					  "(" + fn + ":" + lineno + "): " + l);
 					continue;
 				}
 				/*         r     cb    cg    m     n */
 				Node n = this.nodes[c[0]][c[1]][c[2]][c[3]][c[4]];
-				n.nid = Integer.parseInt(s[2]);
+				n.nid = Integer.parseInt(s[0]);
+/*
 				switch (s[3].charAt(0)) {
 				case 'n':
 					n.state = ST_DISABLED;
@@ -164,10 +153,12 @@ public class XT3Mon extends Applet implements Runnable {
 					n.state = ST_IO;
 					break;
 				case 'c':
-					/* A white lie, but good enough. */
+					// A white lie, but good enough.
 					n.state = ST_FREE;
 					break;
 				}
+*/
+				n.state = ST_FREE;
 				this.invmap.ensureCapacity(n.nid + 1);
 				for (int k = this.invmap.size(); k <= n.nid; k++)
 					this.invmap.add(null);
@@ -334,7 +325,7 @@ public class XT3Mon extends Applet implements Runnable {
 		} catch (IOException e) {
 			System.err.println("[badmap] " + e);
 		}
-		
+
 		try {
 			String fn = _PATH_CHECKMAP;
 			BufferedReader r = new BufferedReader(new FileReader(fn));
@@ -362,7 +353,7 @@ public class XT3Mon extends Applet implements Runnable {
 				}
 				if (Integer.parseInt(s[1]) != 0)
 					n.state = ST_CHECK;
-				
+
 			}
 		} catch (FileNotFoundException e) {
 		} catch (IOException e) {
