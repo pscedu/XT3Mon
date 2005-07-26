@@ -1,7 +1,7 @@
 /* $Id$ */
 
 grant codeBase "file:/usr/users/5/yanovich/code/proj/XT3Mon" {
-	permission java.io.FilePermission "/home/torque/nids_list_login", "read";
+	permission java.io.FilePermission "/home/torque/nids_list_phantom", "read";
 	permission java.io.FilePermission "/home/torque/bad_nids_list_login", "read";
 	permission java.io.FilePermission "/home/torque/check_nids_list_login", "read";
 	permission java.io.FilePermission "/home/torque/ssconfig_phantom", "read";
