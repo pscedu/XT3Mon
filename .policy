@@ -1,8 +1,7 @@
 /* $Id$ */
 
-grant codeBase "file:/usr/users/5/yanovich/code/proj/XT3Mon" {
-	permission java.io.FilePermission "/home/torque/nids_list_phantom", "read";
-	permission java.io.FilePermission "/home/torque/bad_nids_list_login", "read";
-	permission java.io.FilePermission "/home/torque/check_nids_list_login", "read";
-	permission java.io.FilePermission "/home/torque/ssconfig_phantom", "read";
+
+grant codeBase "file:/home/yanovich/code/proj/XT3Mon/XT3Mon.class" {
+	permission java.io.FilePermission "/home/yanovich/code/proj/xt3dmon/data/job", "read";
+	permission java.io.FilePermission "/home/yanovich/code/proj/xt3dmon/data/node", "read";
 };
