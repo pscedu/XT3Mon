@@ -321,16 +321,56 @@ public class XT3Mon extends Applet implements Runnable {
 		}
 	}
 
+	public double[] hsv_to_rgb(double h, double s, double v) {
+		double f, p, q, t;
+		double r, g, b;
+		int i;
+
+		if (s == 0.0)
+			return new double[] { v, v, v };
+		if (h == 360.0)
+			h = 0.0;
+		h /= 60;
+        i = (int)h;
+        f = h - i;
+        p = v * (1 - s);
+        q = v * (1 - (s * f));
+        t = v * (1 - (s * (1 - f)));
+
+        switch (i) {
+        case 0:  r = v;  g = t;  b = p;  break;
+        case 1:  r = q;  g = v;  b = p;  break;
+        case 2:  r = p;  g = v;  b = t;  break;
+        case 3:  r = p;  g = q;  b = v;  break;
+        case 4:  r = t;  g = p;  b = v;  break;
+        case 5:  r = v;  g = p;  b = q;  break;
+		default: r = 0;  g = 0;  b = 0;  break;
+        }
+		return (new double[] { r, g, b });
+	}
+
+	private static final double HUE_MIN = 0;
+	private static final double HUE_MAX = 360;
+	private static final double SAT_MIN = 0.3;
+	private static final double SAT_MAX = 1.0;
+	private static final double VAL_MIN = 0.5;
+	private static final double VAL_MAX = 1.0;
+
 	public Color getColor(int j) {
 		int n = this.njobs;
-		int r, g, b;
-		double div = (double)j / n;
 
-		r = (int)(Math.cos(div) * 255);
-		g = (int)(Math.sin(div) * Math.sin(div)) * 255;
-		b = (int)(Math.abs(Math.tan(div + Math.PI*3/4)) * 255);
+		double hinc = 360.0 / n;
+		double sinc = (SAT_MAX - SAT_MIN) / n;
+		double vinc = (VAL_MAX - VAL_MIN) / n;
 
-		return (new Color(r, g, b));
+		double h = hinc * j + HUE_MIN;
+		double s = sinc * j + SAT_MIN;
+		double v = vinc * j + VAL_MIN;
+
+		double[] rgb = hsv_to_rgb(h, s, v);
+
+		return (new Color((int)(rgb[0] * 255),
+		    (int)(rgb[1] * 255), (int)(rgb[2] * 255)));
 	}
 };
 
