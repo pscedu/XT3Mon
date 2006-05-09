@@ -9,6 +9,10 @@
 			body {
 				font-family: Tahoma, sans-serif;
 			}
+			hr {
+				border: 0px;
+				border-top: 1px solid black;
+			}
 		</style>
 	</head>
 	<body>
@@ -24,7 +28,8 @@
 		<hr />
 		This applet grabs the latest XT3 data files over HTTP,
 		and therefore permissions must be set to allow it to do so.
-		Add the following to your <tt>~/.java.policy</tt> file:
+		Add the following to your <tt>~/.java.policy</tt> file
+		(<tt>~</tt> on Windows refers to e.g. <tt>C:\Documents and Settings\<i>username</i>\</tt>):
 		<pre>
 	grant codeBase "http://www.psc.edu/~yanovich/XT3Mon" {
 		permission java.net.SocketPermission "bigben-monitor.psc.edu", "resolve";
