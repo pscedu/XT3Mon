@@ -3,19 +3,21 @@
 import java.applet.*;
 import java.awt.*;
 import java.io.*;
+import java.net.*;
 import java.util.*;
+import java.util.regex.*;
 
 public class XT3Mon extends Applet implements Runnable {
-	private final static int SLEEPINTV = 5000;
+	private final static int DT_NODE = 0;
+	private final static int DT_JOB = 1;
+
+	private final static int SLEEPINTV = 120000;
 
 	private final static int NROWS = 2;
 	private final static int NCABS = 11;
 	private final static int NCAGES = 3;
 	private final static int NMODS = 8;
 	private final static int NNODES = 4;
-
-	private final static String _PATH_NODE = "../xt3dmon/data/node";
-	private final static String _PATH_JOB = "../xt3dmon/data/job";
 
 	private State[] states = new State[] {
 		new State("Free", Color.white),				/* ST_FREE */
@@ -39,6 +41,7 @@ public class XT3Mon extends Applet implements Runnable {
 	private ArrayList invmap;
 	private LinkedList jobs;
 	private int njobs;
+	private String node_url, job_url;
 
 	public void start() {
 		this.t = new Thread(this);
@@ -73,6 +76,56 @@ public class XT3Mon extends Applet implements Runnable {
 		return (c);
 	}
 
+	public void load(int type) {
+		String file, host, path;
+		Socket s;
+
+		file = null;
+		switch (type) {
+		case DT_NODE:
+			file = this.node_url;
+			break;
+		case DT_JOB:
+			file = this.job_url;
+			break;
+		}
+
+		try {
+			Matcher m = Pattern.compile("^http://([^/]+)(.*)$").matcher(file);
+			if (!m.matches())
+				throw new Exception("invalid URL");
+			host = m.group(1);
+			path = m.group(2);
+
+			s = new Socket(host, 80);
+			BufferedReader r = new BufferedReader(
+			  new InputStreamReader(s.getInputStream()));
+
+			PrintWriter out = new PrintWriter(s.getOutputStream(), true);
+			out.println("GET " + path + " HTTP/1.1");
+			out.println("Host: " + host);
+			out.println("");
+
+			String ln;
+			do {
+				ln = r.readLine();
+			} while (ln != null && !ln.equals(""));
+
+			switch (type) {
+			case DT_NODE:
+				load_node(r);
+				break;
+			case DT_JOB:
+				load_job(r);
+				break;
+			}
+			out.close();
+			r.close();
+		} catch (Exception e) {
+			System.err.println(file + ": " + e);
+		}
+	}
+
 	/*
 	 * Format is:
 	 * 0    1 2  3  4 5 6 7 8	9	10	11	12	13	14	 15
@@ -80,59 +133,51 @@ public class XT3Mon extends Applet implements Runnable {
 	 * =====================================================
 	 * 23	0 0  0  5 3	0 3 5	c	1	0	29	0	0	 c
 	 */
-	public void load_node() {
+	public void load_node(BufferedReader r) throws Exception {
 		int[] c;
-		String fn = _PATH_NODE;
+		String l;
+		int lineno;
 
-		try {
-			BufferedReader r = new BufferedReader(new FileReader(fn));
-			String l;
-			int lineno = 0;
-			while ((l = r.readLine()) != null) {
-				lineno++;
-				l = l.replaceFirst("^\\s+", "");
-				if (l.charAt(0) == '#' || l.equals(""))
-					continue;
+		lineno = 0;
+		while ((l = r.readLine()) != null) {
+			lineno++;
+			l = l.replaceFirst("^\\s+", "");
+			if (l.equals("") || l.charAt(0) == '#')
+				continue;
 
-				String[] s = l.split("\\s+");
+			String[] s = l.split("\\s+");
 
-				if (s.length != 16 || (c = parse_pos(s)) == null) {
-					System.err.println("[node] malformed line " +
-					  "(" + fn + ":" + lineno + "): " + l);
-					continue;
-				}
-				Node n = this.nodes[c[0]][c[1]][c[2]][c[3]][c[4]];
-				n.nid = Integer.parseInt(s[0]);
-
-				switch (s[9].charAt(0)) {
-				case 'n':
-					n.state = ST_DOWN;
-					break;
-				case 'i':
-					n.state = ST_SVC;
-					break;
-				case 'c':
-					n.state = ST_FREE;
-					break;
-				}
-
-				if (s[10].equals("0"))
-					n.state = ST_DOWN;
-				else if (s[11].equals("0"))
-					n.state = ST_FREE;
-				else {
-					n.state = ST_USED;
-					n.job = job_get(this.jobs, s[11]);
-				}
-
-				this.invmap.ensureCapacity(n.nid + 1);
-				for (int k = this.invmap.size(); k <= n.nid; k++)
-					this.invmap.add(null);
-				this.invmap.set(n.nid, n);
+			if (s.length != 16 || (c = parse_pos(s)) == null) {
+				System.err.println("[node] malformed line " +
+				  "(node:" + lineno + "): " + l);
+				continue;
 			}
-			r.close();
-		} catch (Exception e) {
-			System.err.println("[node] " + e);
+			Node n = this.nodes[c[0]][c[1]][c[2]][c[3]][c[4]];
+			n.nid = Integer.parseInt(s[0]);
+
+			switch (s[9].charAt(0)) {
+			case 'n':
+				n.state = ST_DOWN;
+				break;
+			case 'i':
+				n.state = ST_SVC;
+				break;
+			case 'c':
+				n.state = ST_FREE;
+				break;
+			}
+
+			if (s[10].equals("0"))
+				n.state = ST_DISABLED;
+			else if (!s[11].equals("0")) {
+				n.state = ST_USED;
+				n.job = job_get(this.jobs, s[11]);
+			}
+
+			this.invmap.ensureCapacity(n.nid + 1);
+			for (int k = this.invmap.size(); k <= n.nid; k++)
+				this.invmap.add(null);
+			this.invmap.set(n.nid, n);
 		}
 	}
 
@@ -148,10 +193,12 @@ public class XT3Mon extends Applet implements Runnable {
 							this.nodes[r][cb][cg][m][n] = new Node(-1);
 		this.width = Integer.parseInt(this.getParameter("width"));
 		this.height = Integer.parseInt(this.getParameter("height"));
+		this.node_url = this.getParameter("node_url");
+		this.job_url = this.getParameter("job_url");
 		this.resize(this.width, this.height);
 
-		this.load_job();
-		this.load_node();
+		this.load(DT_JOB);
+		this.load(DT_NODE);
 	}
 
 	public synchronized void update(Graphics g) {
@@ -159,8 +206,8 @@ public class XT3Mon extends Applet implements Runnable {
 		if (this.lastrun + SLEEPINTV >= now.getTime())
 			return;
 		try {
-			this.load_job();
-			this.load_node();
+			this.load(DT_JOB);
+			this.load(DT_NODE);
 			this.lastrun = now.getTime();
 			this.paint(g);
 		} catch (Exception e) {
@@ -187,37 +234,29 @@ public class XT3Mon extends Applet implements Runnable {
 	 * ===================================================================
 	 * 34892	mkurniko	300	187	9900	4	batch	lang-heat-450k.job
 	 */
-	public void load_job() {
+	public void load_job(BufferedReader r) throws Exception {
 		LinkedList newj = new LinkedList();
 		int njobs = 0;
 		Node n;
 		Job j;
+		String l;
+		int lineno = 0;
 
-		try {
-			String fn = _PATH_JOB;
-			BufferedReader r = new BufferedReader(new FileReader(fn));
-			String l;
-			int lineno = 0;
+		while ((l = r.readLine()) != null) {
+			lineno++;
+			l = l.replaceFirst("^\\s+", "");
+			if (l.equals("") || l.charAt(0) == '#')
+				continue;
 
-			while ((l = r.readLine()) != null) {
-				lineno++;
-				l = l.replaceFirst("^\\s+", "");
-				if (l.charAt(0) == '#' || l.equals(""))
-					continue;
-
-				String[] s = l.split("\\s+");
-				if (s.length != 8) {
-					System.err.println("[job] malformed line " +
-					  "(" + fn + ":" + lineno + "): " + l);
-					continue;
-				}
-				j = job_get(newj, s[0]);
-				j.owner = s[1];
-				njobs++;
+			String[] s = l.split("\\s+");
+			if (s.length != 8) {
+				System.err.println("[job] malformed line " +
+				  "(job:" + lineno + "): " + l);
+				continue;
 			}
-			r.close();
-		} catch (Exception e) {
-			System.err.println("[job] " + e);
+			j = job_get(newj, s[0]);
+			j.owner = s[1];
+			njobs++;
 		}
 
 		this.jobs = newj;

@@ -1,7 +1,7 @@
 /* $Id$ */
 
-
-grant codeBase "file:/home/yanovich/code/proj/XT3Mon/XT3Mon.class" {
-	permission java.io.FilePermission "/home/yanovich/code/proj/xt3dmon/data/job", "read";
-	permission java.io.FilePermission "/home/yanovich/code/proj/xt3dmon/data/node", "read";
+grant codeBase "file:/home/yanovich/code/proj/XT3Mon" {
+	permission java.net.SocketPermission "bigben-monitor.psc.edu", "resolve";
+	permission java.net.SocketPermission "bigben-monitor.psc.edu:80", "connect";
+	permission java.net.SocketPermission "bigben-monitor.psc.edu:80", "resolve";
 };
