@@ -104,6 +104,7 @@ public class XT3Mon extends Applet implements Runnable {
 			PrintWriter out = new PrintWriter(s.getOutputStream(), true);
 			out.println("GET " + path + " HTTP/1.1");
 			out.println("Host: " + host);
+			out.println("Connection: close");
 			out.println("");
 
 			String ln;
@@ -137,6 +138,9 @@ public class XT3Mon extends Applet implements Runnable {
 		int[] c;
 		String l;
 		int lineno;
+
+		for (int i = 0; i < this.states.length; i++)
+			this.states[i].nmemb = 0;
 
 		lineno = 0;
 		while ((l = r.readLine()) != null) {
@@ -173,6 +177,11 @@ public class XT3Mon extends Applet implements Runnable {
 				n.state = ST_USED;
 				n.job = job_get(this.jobs, s[11]);
 			}
+
+			if (n.state == ST_USED)
+				n.job.nmemb++;
+			else
+				this.states[n.state].nmemb++;
 
 			this.invmap.ensureCapacity(n.nid + 1);
 			for (int k = this.invmap.size(); k <= n.nid; k++)
@@ -339,7 +348,9 @@ public class XT3Mon extends Applet implements Runnable {
 			g.fillRect(x, y, boxwidth, boxheight);
 			g.setColor(Color.black);
 			g.drawRect(x, y, boxwidth, boxheight);
-			g.drawString(this.states[k].label, x + boxwidth + 4, y + txheight - 2);
+			g.drawString(this.states[k].label +
+			  " (" + this.states[k].nmemb + ")",
+			  x + boxwidth + 4, y + txheight - 2);
 		}
 		Job j;
 		Iterator it = this.jobs.iterator();
@@ -351,11 +362,12 @@ public class XT3Mon extends Applet implements Runnable {
 				y = this.height - legendheight + 10 + txheight;
 				x += this.width / 4;
 			}
-			g.setColor(this.getColor(k));
+			g.setColor(j.color);
 			g.fillRect(x, y, boxwidth, boxheight);
 			g.setColor(Color.black);
 			g.drawRect(x, y, boxwidth, boxheight);
-			g.drawString(j.owner + "/" + j.id, x + boxwidth + 4,
+			g.drawString(j.owner + "/" + j.id +
+			  " (" + j.nmemb + ")", x + boxwidth + 4,
 			  y + txheight - 2);
 		}
 	}
@@ -417,19 +429,23 @@ class Job {
 	public int id;
 	public String owner;
 	public Color color;
+	public int nmemb;
 
 	public Job(int id) {
 		this.id = id;
+		this.nmemb = 0;
 	}
 };
 
 class State {
 	public Color color;
 	public String label;
+	public int nmemb;
 
 	public State(String l, Color c) {
 		this.color = c;
 		this.label = l;
+		this.nmemb = 0;
 	}
 };
 
